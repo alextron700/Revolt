@@ -298,7 +298,7 @@ int main()
 	std::cout<<"Most of these shouldn't need much explanation, but do please keep in mind that STBASM32 is 32-bit"<<std::endl;
 	printf("use # at the start of a line for a comment. make sure you don't include valid instructions (valid instructions are allcaps)");
 	printf("invalid instructions will be read by the parser as a NOP. it won't do anything, but it'll take a slot of memory\n");
-	std::vector<int> memory = {0x0,0x0};
+	std::vector<int> memory = {0x0,0x0,0x0};
 	bool thinking = true;
 	int length = 0;
 	std::string command;
@@ -319,22 +319,22 @@ int main()
 		{
 			std::cout<<"You need at least one instruction!";
 		}
-		if(command[0] != '#')
+		if (command[0] != '#')
 		{
 			encoded = encodeInstruction(command);
-		}
-		for(int i = 0; i < encoded.size(); i++)
-		{
-			memory.push_back(encoded[i]);
-		}
-		if(command[0] != '#')
-		{
-			if(command.size() > 2)
+
+			for (int i = 0; i < encoded.size(); i++)
+			{
+				memory.push_back(encoded[i]);
+			}
+
+			if (command.size() > 2)
 			{
 				length += encoded.size();
-			} else
+			}
+			else
 			{
-				std::cout<<"The shortest acceptable command is 3 characters.";
+				std::cout << "The shortest acceptable command is 3 characters.";
 			}
 		}
 	}
