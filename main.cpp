@@ -2,9 +2,10 @@
 #include <vector>
 #include <string>
 #include <iostream>
-std::vector<int> encodeInstruction(std::string inst)
+#include<iomanip>
+std::vector<unsigned int> encodeInstruction(std::string inst)
 {
-	int opcode = 0;
+	unsigned int opcode = 0;
 	if(inst.find("ADD") != std::string::npos)
 	{
 		opcode = 1;
@@ -14,158 +15,156 @@ std::vector<int> encodeInstruction(std::string inst)
 	{
 		opcode = 2;
 
-	}
-	if(inst.find("AND") != std::string::npos)
+	}else if(inst.find("AND") != std::string::npos)
 	{
 		opcode = 3;
 
-	}
-	if(inst.find("OR_") != std::string::npos) // to simplify decoding, OR will have to become OR_, so it's exactly three characters it makes the logic far less of a headache
+	}else if(inst.find("OR_") != std::string::npos) // to simplify decoding, OR will have to become OR_, so it's exactly three characters it makes the logic far less of a headache
 	{
 		opcode = 4;
 
 	}
-	if(inst.find("XOR") != std::string::npos)
+	else if(inst.find("XOR") != std::string::npos)
 	{
 		opcode = 5;
 
 	}
-	if(inst.find("NOT") != std::string::npos)
+	else if(inst.find("NOT") != std::string::npos)
 	{
 		opcode = 6;
 
 	}
-	if(inst.find("SHR") != std::string::npos)
+	else if(inst.find("SHR") != std::string::npos)
 	{
 		opcode = 7;
 
 	}
-	if(inst.find("SHL") != std::string::npos)
+	else if(inst.find("SHL") != std::string::npos)
 	{
 		opcode = 8;
 
 	}
-	if(inst.find("STM") != std::string::npos)
+	else if(inst.find("STM") != std::string::npos)
 	{
 		opcode = 9;
 
 	}
-	if(inst.find("LDM") != std::string::npos)
+	else if(inst.find("LDM") != std::string::npos)
 	{
 		opcode = 10;
 
 	}
-	if(inst.find("STJ") != std::string::npos)
+	else if(inst.find("STJ") != std::string::npos)
 	{
 		opcode = 11;
 
 	}
-	if(inst.find("JMP") != std::string::npos)
+	else if(inst.find("JMP") != std::string::npos)
 	{
 		opcode = 12;
 
 	}
-	if(inst.find("CAL") != std::string::npos)
+	else if(inst.find("CAL") != std::string::npos)
 	{
 		opcode = 13;
 
 	}
-	if(inst.find("RET") != std::string::npos)
+	else if(inst.find("RET") != std::string::npos)
 	{
 		opcode = 14;
 
 	}
-	if(inst.find("HLT") != std::string::npos)
+	else if(inst.find("HLT") != std::string::npos)
 	{
 		opcode = 15;
 
 	}
-	if(inst.find("LDI") != std::string::npos)
+	else if(inst.find("LDI") != std::string::npos)
 	{
 		opcode = 16;
 
 	}
-	if(inst.find("ADF") != std::string::npos)
+	else if(inst.find("ADF") != std::string::npos)
 	{
 		opcode = 17;
 
 	}
-	if(inst.find("SUF") != std::string::npos)
+	else if(inst.find("SUF") != std::string::npos)
 	{
 		opcode = 18;
 
 	}
-	if(inst.find("MUF") != std::string::npos) 
+	else if(inst.find("MUF") != std::string::npos) 
 	{
 		opcode = 19;
 
 	}
-	if(inst.find("DIF") != std::string::npos)
+	else if(inst.find("DIF") != std::string::npos)
 	{
 		opcode = 20;
 
 	}
-	if(inst.find("I2F") != std::string::npos)
+	else if(inst.find("I2F") != std::string::npos)
 	{
 		opcode = 21;
 
 	}
-	if(inst.find("F2I") != std::string::npos)
+	else if(inst.find("F2I") != std::string::npos)
 	{
 		opcode = 22;
 
 	}
-	if(inst.find("ENV") != std::string::npos)
+	else if(inst.find("ENV") != std::string::npos)
 	{
 		opcode = 23;
 
 	}
-	if(inst.find("ERV") != std::string::npos)
+	else if(inst.find("ERV") != std::string::npos)
 	{
 		opcode = 24;
 
 	}
-	if(inst.find("ADV") != std::string::npos)
+	else if(inst.find("ADV") != std::string::npos)
 	{
 		opcode = 25;
 
 	}
-	if(inst.find("SUV") != std::string::npos)
+	else if(inst.find("SUV") != std::string::npos)
 	{
 		opcode = 26;
 
 	}
-	if(inst.find("MUV") != std::string::npos)
+	else if(inst.find("MUV") != std::string::npos)
 	{
 		opcode = 27;
 
 	}
-	if(inst.find("DIV") != std::string::npos)
+	else if(inst.find("DIV") != std::string::npos)
 	{
 		opcode = 28;
 
 	}
-	if(inst.find("INV") != std::string::npos)
+	else if(inst.find("INV") != std::string::npos)
 	{
 		opcode = 29;
 
 	}
-	if(inst.find("ICM") != std::string::npos)
+	else if(inst.find("ICM") != std::string::npos)
 	{
 		opcode = 30;
 
 	}
-	if(inst.find("IFM") != std::string::npos)
+	else if(inst.find("IFM") != std::string::npos)
 	{
 		opcode = 31;
 	}
 	//0123 4 567 89 AB CDE F | GHIJ KLMN OPQR STUV
 	//0000 0 000 00 00 000 0 | 0000 0000 0000 0000
 	if(opcode == 0 || opcode == 14 || opcode == 15) {
-		return {static_cast<int>((opcode << 27) & 0xFFFFFFFF)};
+		return {static_cast<unsigned int>((opcode << 27) & 0xFFFFFFFF)};
 
 	}
-	int destFeild = 0;
+	unsigned int destFeild = 0;
 	bool directMemory = false;
 	if(opcode != 12)
 	{
@@ -215,7 +214,7 @@ std::vector<int> encodeInstruction(std::string inst)
 			{
 				if(inst[i] == 'R')
 				{
-					A = std::stoi(inst.substr(i+1,1),nullptr,16);
+					A = abs(std::stoi(inst.substr(i+1,1),nullptr,16));
 					tokenA = i;
 					continue;
 
@@ -223,7 +222,7 @@ std::vector<int> encodeInstruction(std::string inst)
 				if(inst[i] == '$')
 				{
 
-					A = std::stoi(inst.substr(i+1, 8), nullptr,16);
+					A = abs(std::stoi(inst.substr(i+1, 8), nullptr,16));
 					AConst = true;
 					tokenA = i;
 					continue;
@@ -240,14 +239,14 @@ std::vector<int> encodeInstruction(std::string inst)
 			{
 				if(inst[i] == 'R')
 				{
-					B = std::stoi(inst.substr(i+1,1),nullptr,16);
+					B = abs(std::stoi(inst.substr(i+1,1),nullptr,16));
 					continue;
 
 				}
 				if(inst[i] == '$')
 				{
 
-					B = std::stoi(inst.substr(i+1,8), nullptr,16);
+					B = abs(std::stoi(inst.substr(i+1,8), nullptr,16));
 					BConst = true;
 					continue;
 
@@ -258,10 +257,10 @@ std::vector<int> encodeInstruction(std::string inst)
 		}
 
 	}
-	int One =( opcode << 27) & 0xFFFFFFFF;
-	int Two = (destFeild << 22) & 0xFFFFFFFF;
-	int Three = A & 0xF;
-	int Four = B & 0xF;
+	unsigned int One =( opcode << 27) & 0xFFFFFFFF;
+	unsigned int Two = (destFeild << 22) & 0xFFFFFFFF;
+	unsigned int Three = static_cast<unsigned int>(A & 0xF);
+	unsigned int Four = static_cast<unsigned int>(B & 0xF);
 	if(AConst) {
 		Three |= 0x10;
 
@@ -273,8 +272,8 @@ std::vector<int> encodeInstruction(std::string inst)
 	}
 	Three = (Three << 17) & 0xFFFFFFFF;
 	Four = (Four << 12) & 0xFFFFFFFF;
-	int encInst = One | Two | Three | Four;
-	std::vector<int> output;
+	unsigned int encInst = One | Two | Three | Four;
+	std::vector<unsigned int> output;
 	output.push_back(encInst);
 	if(AConst)
 	{
@@ -298,11 +297,11 @@ int main()
 	std::cout<<"Most of these shouldn't need much explanation, but do please keep in mind that STBASM32 is 32-bit"<<std::endl;
 	printf("use # at the start of a line for a comment. make sure you don't include valid instructions (valid instructions are allcaps)");
 	printf("invalid instructions will be read by the parser as a NOP. it won't do anything, but it'll take a slot of memory\n");
-	std::vector<int> memory = {0x0,0x0,0x0};
+	std::vector<unsigned int> memory = {0x0,0x0,0x0};
 	bool thinking = true;
 	int length = 0;
 	std::string command;
-	std::vector<int> encoded;
+	std::vector<unsigned int> encoded;
 	while(thinking)
 	{
 		//if(length > 65536)
@@ -322,6 +321,11 @@ int main()
 		if (command[0] != '#')
 		{
 			encoded = encodeInstruction(command);
+			for (int i = 0; i < encoded.size(); i++)
+			{
+				std::cout << std::hex << encoded[i] << " ";
+			}
+
 
 			for (int i = 0; i < encoded.size(); i++)
 			{
@@ -338,21 +342,21 @@ int main()
 			}
 		}
 	}
-	std::vector<int> stack;
-	int PC = 0;
-	int JR = 0;
-	int SP = stack.size() - 1; // Subtract the number of stack frames we want. For now, it's 16. We can adjust this if we so choose;
-	int MI = 0;
-	std::vector<int> R = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	std::vector<unsigned int> stack;
+	unsigned int PC = 0;
+	unsigned int JR = 0;
+	//int SP = stack.size() - 1; // Subtract the number of stack frames we want. For now, it's 16. We can adjust this if we so choose;
+	unsigned int MI = 0;
+	std::vector<unsigned int> R = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 	unsigned short typeFlags = 0;
 	std::vector<float> VA;
 	std::vector<float> VB;
 	std::vector<float> Vout = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};;
 	union flint {
 		float F;
-		int I;
+		unsigned int I;
 	};
-	while(PC <= memory.size())
+	while(PC < memory.size())
 	{
 		int instrCode = memory[PC];
 		int A = (instrCode>>17) & 0xF;
@@ -361,8 +365,8 @@ int main()
 		int BIndex = B;
 		A = R[A];
 		B = R[B];
-		bool AConst = (instrCode & 0x00010000) > 0;
-		bool BConst = (instrCode & 0x00200000) > 0;
+		bool AConst = (instrCode & (1<<21)) > 0;
+		bool BConst = (instrCode & (1<<16)) > 0;
 		int Dest = (instrCode>>22) & 0xF;
 		bool isAddress = (instrCode & 0x04000000) > 0;
 		bool incrementPC = true;
@@ -493,8 +497,8 @@ int main()
 		}
 		case 0xD:
 		{
-			SP++;
-			int returnAddress = PC + 1;
+			//SP++;
+			unsigned int returnAddress = PC + 1;
 			if(AConst)
 			{
 				returnAddress++;
@@ -509,8 +513,8 @@ int main()
 		case 0xE:
 			if(stack.size() > 1)
 			{
-				SP--;
-				PC = stack[SP];
+				//SP--;
+				PC = stack[stack.size() - 1];
 				stack.pop_back();
 				incrementPC = false;
 			}
@@ -520,6 +524,7 @@ int main()
 			R = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 			JR = 0;
 			SP = 0;
+			return 0;
 			break;
 		case 0x10:
 			result = A;
