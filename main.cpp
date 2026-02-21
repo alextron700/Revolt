@@ -514,7 +514,11 @@ int main()
 			{
 				returnAddress++;
 			}
-
+			if (stack.size() > 65536)
+			{
+				std::cout << "Stack Overflow!";
+				return 0;
+			}
 			stack.push_back(returnAddress); // it might be wise to plump up the memory with enough 0s I'm technically cheating here, but this is the most practical way I know of to implement this
 			PC = A;
 			incrementPC = false;
@@ -528,6 +532,10 @@ int main()
 				PC = stack[stack.size() - 1];
 				stack.pop_back();
 				incrementPC = false;
+			}
+			else {
+				std::cout << "Stack Underflow!";
+				return 0;
 			}
 			break;
 		case 0xF:
