@@ -10,8 +10,7 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 	{
 		opcode = 1;
 
-	}
-	if (inst.find("SUB") != std::string::npos)
+	}else if (inst.find("SUB") != std::string::npos)
 	{
 		opcode = 2;
 
