@@ -871,7 +871,7 @@ int main()
 		}
 		if ((memory[2] & 0x40000000) != 0)
 		{
-			std::cout << memory[0];
+			std::cout <<static_cast<int>(memory[0]);
 			memory[2] &= ~0x40000000;
 		}
 		if ((memory[2] & 0x20000000) != 0)
