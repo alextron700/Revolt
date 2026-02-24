@@ -491,7 +491,7 @@ int main()
 			result = memory[B % memory.size()];
 			break;
 		case 0xB:
-			JR = A;
+			JR;
 			break;
 		case 0xC:
 		{
@@ -500,7 +500,7 @@ int main()
 			bool GTEnabled = Dest & 0x4;
 			if ((A < B && LTEnabled) || (A == B && EQEnabled) || (A > B && GTEnabled))
 			{
-				PC = JR;
+				PC = JR + 2;
 				incrementPC = false;
 
 			}
