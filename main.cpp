@@ -520,7 +520,7 @@ int main()
 				return 0;
 			}
 			stack.push_back(returnAddress); // it might be wise to plump up the memory with enough 0s I'm technically cheating here, but this is the most practical way I know of to implement this
-			PC = A;
+			PC = A + 2;
 			incrementPC = false;
 
 			break;
@@ -529,7 +529,7 @@ int main()
 			if (stack.size() > 0)
 			{
 				//SP--;
-				PC = stack[stack.size() - 1];
+				PC = stack[stack.size() - 1] + 2;
 				stack.pop_back();
 				incrementPC = false;
 			}
