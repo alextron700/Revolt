@@ -529,7 +529,7 @@ int main()
 			if (stack.size() > 0)
 			{
 				//SP--;
-				PC = stack[stack.size() - 1] + 2;
+				PC = stack[stack.size() - 1];
 				stack.pop_back();
 				incrementPC = false;
 			}
