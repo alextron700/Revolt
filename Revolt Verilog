@@ -1,0 +1,229 @@
+// Code your design here
+module RevoltFPU ( // FPU LOGIC GOES HERE
+  input [31:0] a,b,
+  input [4:0] op,
+  output [31:0] res
+);
+  assign res = a;
+endmodule
+/*wire [31:0] v_fpu_res [0:15];
+genvar i;
+generate
+    for (i = 0; i < 16; i = i + 1) begin : fpu_gen
+        RevoltFPU v_fpu_unit (
+            .a(VA[i]), 
+            .b(VB[i]), 
+            .op(opcode), 
+            .res(v_fpu_res[i])
+        );
+    end
+endgenerate
+*/
+module RevoltCore (
+    input clk, reset,
+    output [31:0] pc_val,
+  output [31:0] r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,rA,rB,rC,rD,rE,rF
+);
+    reg [31:0] R [0:15];
+  reg [31:0] memory [0:8195];
+  reg [31:0] stack [0:4095];
+    reg [31:0] PC;
+  	reg [31:0] JR;
+  	reg [31:0] SP;
+  	reg [31:0] VA [0:15];   // Vector A (16 lanes)
+	reg [31:0] VB [0:15];   // Vector B (16 lanes)
+	reg [31:0] Vout [0:15]; // Vector Output (16 lanes)
+	reg [3:0]  v_idx = 0;   // Current Vector Pointer (for Enroll/Erase)
+
+    // --- Hard-Injected Program (Fixes the syntax errors) ---
+    initial begin
+        // Use [ ] for indexing and assign each word individually
+        memory[0] = 32'h80200000; // MOV 0x42 into R0
+        memory[1] = 32'h00000042;
+        memory[2] = 32'h08400000; // ADD R0 + R0
+    end
+  wire [31:0] instr = memory[PC[31:0]];
+
+    // --- 2. Zero-Cost Decoder (Your 32-bit Layout) ---
+    wire [4:0]  opcode  = instr[31:27];
+    wire        addrFlg = instr[26];
+    wire [3:0]  Dest    = instr[25:22];
+    wire        const0  = instr[21];
+    wire [3:0]  src0Idx = instr[20:17];
+    wire        const1  = instr[16];
+    wire [3:0]  src1Idx = instr[15:12];
+  
+
+    // --- 3. Immediate / Register Fetch (The A and B Logic) ---
+    // If const0 is 1, A is the word after the instruction. Else, it's R[src0Idx].
+    wire [31:0] A = const0 ? memory[PC + 1] : R[src0Idx];
+    
+    // If const1 is 1, B is the word after A. 
+    // We use (PC + 1 + const0) to skip the immediate A if it exists.
+  wire [31:0] B = const1 ? memory[PC + 1 + {31'b0,const0}] : R[src1Idx];
+  wire[63:0] full_mul={32'b0,A} * {32'b0,B};
+    always @(posedge clk) begin
+    if (reset) begin
+        PC <= 0;
+        JR <= 0;
+        // Hardware Reset: Clear registers
+      for (int i = 0; i < 16; i = i + 1) R[i] <= 0;
+    end else begin
+        case (opcode)
+            5'h01: begin // ADD
+                R[Dest] <= A + B;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+          	5'h02: begin
+              R[Dest] <= A - B;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+            5'h03: begin // AND (The Hamming Mask)
+                R[Dest] <= A & B;
+              PC <= PC + 1 + {31'b0,const0} +{ 31'b0,const1};
+            end
+          	5'h04: begin
+              R[Dest] <= A | B;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+          	5'h05: begin
+              R[Dest] <= A ^ B;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+          	5'h06: begin
+              R[Dest] <= ~A;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+            5'h07: begin // SHR (The Hamming Shift)
+                R[Dest] <= A >> B;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+          	5'h09: begin // Store to Memory / Console
+    		if (B == 2 && A == 32'h10000000) begin
+        // Silicon triggers the Console
+        	$display("CONSOLE OUT: %c (0x%h)", memory[0][7:0], memory[0]);
+    		end else begin
+              memory[B[31:0]] <= A;
+    		end
+    		PC <= PC + 1 + {31'b0, const0} + {31'b0, const1};
+			end
+          	5'h0A: begin
+              R[Dest] <= memory[A[31:0]];
+            end
+          	5'h0B: begin
+              JR <= A;
+            end
+            5'h0C: begin // JMP [LTEQGT] (The Loop)
+                // Evaluate LT, EQ, GT flags in ONE clock cycle
+               if ((A < B  && ((Dest & 4'h1) != 4'h0)) || 
+    			(A == B && ((Dest & 4'h2) != 4'h0)) || 
+    			(A > B  && ((Dest & 4'h4) != 4'h0))) begin
+                    PC <= JR + 2; // Jump to pre-loaded target
+                end else begin
+                  PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+                end
+            end
+          5'h0D: begin // CALL
+    		stack[SP] <= PC + 1 + {31'b0, const0} + {31'b0, const1};
+    		SP <= SP + 1;
+    		PC <= A + 2; // Your specific Wasm-to-Native jump logic
+			end
+			5'h0E: begin // RET
+            PC <= stack[SP-1];
+    		SP <= SP - 1;
+			end
+          	5'h0F: begin
+              $display("System exited normally");
+              $finish;
+            end
+            5'h10: begin // MOV / LDI
+                R[Dest] <= A;
+              PC <= PC + 1 + {31'b0,const0} + {31'b0,const1};
+            end
+          	5'h11,5'h12,5'h13,5'h14,5'h15,5'h16: begin // FPU STUFF GOES HERE ADDF, SUBF, MULF, DIVF, I2F and F2I
+             // R[Dest] = fpu_res;
+            end
+          5'h17: begin // ENROLL: VA[AIndex] = GPR[A], VB[BIndex] = GPR[B]
+   		 	VA[src0Idx] <= A; 
+    		VB[src1Idx] <= B;
+    		PC <= PC + 1 + {31'b0, const0} + {31'b0, const1};
+			end
+          5'h18: begin // VECTOR ERASE (Global Reset)
+    // In one 10ns tick, we pull the "Reset" line on all 16 lanes
+  	  for (int i = 0; i < 16; i = i + 1) begin
+       	 VA[i]   <= 32'h0;
+       	 VB[i]   <= 32'h0;
+       	 Vout[i] <= 32'h0;
+    	end
+   		 PC <= PC + 1;
+          end
+		5'h19: begin // VECTOR ADD (SIMD)
+    // Hardware unrolls this into 16 parallel gates
+   		 for (int i = 0; i < 16; i = i + 1) begin
+       		 Vout[i] <= VA[i] + VB[i];
+    		end
+    		PC <= PC + 1;
+		end
+          5'h1A: begin // VECTOR SUB (SIMD)
+    // Hardware unrolls this into 16 parallel gates
+   		 for (int i = 0; i < 16; i = i + 1) begin
+           Vout[i] <= VA[i] - VB[i];
+    		end
+    		PC <= PC + 1;
+		end
+          5'h1B: begin // VECTOR MUL (SIMD)
+    // Hardware unrolls this into 16 parallel gates
+   		 for (int i = 0; i < 16; i = i + 1) begin
+           Vout[i] <= VA[i] * VB[i];
+    		end
+    		PC <= PC + 1;
+		end
+          5'h1C: begin // VECTOR DIV (SIMD)
+    // Hardware unrolls this into 16 parallel gates
+   		 for (int i = 0; i < 16; i = i + 1) begin
+           if(VB[i] != 32'h0) begin
+           
+             Vout[i] <= VA[i] / VB[i];
+           end
+    		end
+    		PC <= PC + 1;
+		end
+		5'h1D: begin // INDEX: GPR[Dest] = Vout[AIndex]
+    		R[Dest] <= Vout[src0Idx];
+    		PC <= PC + 1 + {31'b0, const0} + {31'b0, const1};
+		end
+            5'h1E: begin // IMUL_CAP (Integer Capped Multiply)
+              
+   		 if (full_mul > 64'h00000000FFFFFFFF) begin
+       		 R[Dest] <= 32'hFFFFFFFF; // Cap at Max Int
+        //	typeFlags[Dest] <= 1'b1;  // Set "Overflow/Special" flag
+    	end else begin
+       		 R[Dest] <= full_mul[31:0];
+    	end
+    PC <= PC + 1 + {31'b0, const0} + {31'b0, const1};
+end
+            //1F: CONVERT TO FLOAT ON OVERFLOW
+            default: PC <= PC + 1;
+        endcase
+    end
+end
+
+    assign pc_val = PC;
+  assign r0 = R[0];
+  assign r1 = R[1];
+  assign r2 = R[2];
+  assign r3 = R[3];
+  assign r4 = R[4];
+  assign r5 = R[5];
+  assign r6 = R[6];
+  assign r7 = R[7];
+  assign r8 = R[8];
+  assign r9 = R[9];
+  assign rA = R[10];
+  assign rB = R[11];
+  assign rC = R[12];
+  assign rD = R[13];
+  assign rE = R[14];
+  assign rF = R[15];
+endmodule
+
