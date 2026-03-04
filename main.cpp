@@ -173,13 +173,15 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		{
 			char C = inst[4];
 			destFeild += 16;
-			destFeild += abs(std::stoi(inst.substr(inst[8],1), nullptr, 16));
+			destFeild += abs(std::stoi(inst.substr(8,1), nullptr, 16));
 			directMemory = true;
 
 		}
 		else
 		{
-			destFeild = abs(std::stoi(inst.substr(inst[5],1), nullptr, 16));
+		    char k = inst[5];
+		    char j = inst[4];
+			destFeild = abs(std::stoi(inst.substr(5,1), nullptr, 16));
 
 		}
 
