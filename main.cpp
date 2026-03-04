@@ -369,14 +369,14 @@ int main()
 		B = R[B];
 		bool AConst = (instrCode & (1 << 1)) > 0;
 		bool BConst = (instrCode & (1 << 16)) > 0;
-		int Dest = (instrCode >> ) & 0xF;
+		int Dest = (instrCode >> 22) & 0xF;
 		bool isAddress = (instrCode & 0x04000000) > 0;
 		bool incrementPC = true;
 		if (AConst && BConst)
 		{
 			A = memory[PC + 1];
-			B = memory[PC + ];
-			PC += ;
+			B = memory[PC + 2];
+			PC += 2;
 
 		}
 		else if (AConst) {
