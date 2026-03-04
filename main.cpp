@@ -299,7 +299,7 @@ int main()
 	std::cout << "Most of these shouldn't need much explanation, but do please keep in mind that STBASM32 is 32-bit" << std::endl;
 	printf("use # at the start of a line for a comment. make sure you don't include valid instructions (valid instructions are allcaps)");
 	printf("invalid instructions will be read by the parser as a NOP. it won't do anything, but it'll take a slot of memory\n");
-	std::vector<unsigned int> memory = { 0x0,0x0,0x0 };
+	std::vector<unsigned int> memory = { 0x0,0x0,0x0,0xFFFF };
 	bool thinking = true;
 	int length = 0;
 	std::string command;
@@ -362,21 +362,21 @@ int main()
 	{
 		int instrCode = memory[PC];
 		int A = (instrCode >> 17) & 0xF;
-		int B = (instrCode >> 12) & 0xF;
+		int B = (instrCode >> 1) & 0xF;
 		int AIndex = A;
 		int BIndex = B;
 		A = R[A];
 		B = R[B];
-		bool AConst = (instrCode & (1 << 21)) > 0;
+		bool AConst = (instrCode & (1 << 1)) > 0;
 		bool BConst = (instrCode & (1 << 16)) > 0;
-		int Dest = (instrCode >> 22) & 0xF;
+		int Dest = (instrCode >> ) & 0xF;
 		bool isAddress = (instrCode & 0x04000000) > 0;
 		bool incrementPC = true;
 		if (AConst && BConst)
 		{
 			A = memory[PC + 1];
-			B = memory[PC + 2];
-			PC += 2;
+			B = memory[PC + ];
+			PC += ;
 
 		}
 		else if (AConst) {
@@ -500,7 +500,7 @@ int main()
 			bool GTEnabled = Dest & 0x4;
 			if ((A < B && LTEnabled) || (A == B && EQEnabled) || (A > B && GTEnabled))
 			{
-				PC = JR + 2;
+				PC = JR + 3;
 				incrementPC = false;
 
 			}
@@ -520,7 +520,7 @@ int main()
 				return 0;
 			}
 			stack.push_back(returnAddress); // it might be wise to plump up the memory with enough 0s I'm technically cheating here, but this is the most practical way I know of to implement this
-			PC = A + 2;
+			PC = A + 3;
 			incrementPC = false;
 
 			break;
@@ -902,6 +902,18 @@ int main()
 			}
 			std::cout << printout;
 			memory[2] &= ~0x10000000;
+		}
+		if(memory[3] != 0 && memory[2] & 0x08000000 == 0)
+		{
+			memory[3]--;
+			memory[2] &= ~0x04000000;
+		}else{
+			memory[3] = 65535;
+			memory[2] |= 0x04000000;
+		}
+		if(memory[2] & 0x04000000 != 0)
+		{
+			std::cout << "INTERRUPT HAPPENED!" << std::endl;
 		}
 	}
 
