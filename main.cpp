@@ -493,7 +493,7 @@ int main()
 			result = memory[B % memory.size()];
 			break;
 		case 0xB:
-			JR;
+			JR = A;
 			break;
 		case 0xC:
 		{
