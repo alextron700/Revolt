@@ -1,0 +1,453 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <map>
+#include <regex>
+#include <stack>
+#include <cstdint>
+
+// --- I. TOKEN DEFINITIONS ---
+enum TokenType { KEYWORD, IDENTIFIER, NUMBER, OPERATOR, PUNCTUATION, STRING_LITERAL, CHAR_LITERAL };
+
+struct Token {
+    TokenType type;
+    std::string value;
+    bool is(std::string val) const { return value == val; }
+};
+
+enum DataType { DT_INT, DT_FLOAT, DT_CHAR, DT_BOOL, DT_POINTER, DT_STRUCT, DT_ARRAY };
+
+// --- II. NAME TABLE ---
+struct NameRecord {
+    std::string name;
+    DataType    dtype;
+    uint32_t    address;
+    int         reg_num;
+    bool        is_in_reg;
+    std::string struct_tag;
+};
+
+class NameTable {
+    std::map<std::string, NameRecord> table;
+    uint32_t next_addr = 0x20000;
+public:
+    void add_var(std::string name, DataType dt) {
+        if (!table.count(name)) {
+            NameRecord r; r.name=name; r.dtype=dt; r.address=next_addr;
+            r.reg_num=0; r.is_in_reg=false; r.struct_tag="";
+            table[name] = r; next_addr += 4;
+        }
+    }
+    void add_var_to_reg(std::string name, int reg, DataType dt) {
+        NameRecord r; r.name=name; r.dtype=dt; r.address=0;
+        r.reg_num=reg; r.is_in_reg=true; r.struct_tag="";
+        table[name] = r;
+    }
+    void add_func(std::string name) {
+        NameRecord r; r.name=name; r.dtype=DT_INT; r.address=0;
+        r.reg_num=0; r.is_in_reg=false; r.struct_tag="";
+        table[name] = r;
+    }
+    void add_struct_instance(std::string name, std::string tag, int size) {
+        NameRecord r; r.name=name; r.dtype=DT_STRUCT; r.address=next_addr;
+        r.reg_num=0; r.is_in_reg=false; r.struct_tag=tag;
+        table[name] = r; next_addr += size;
+    }
+    bool exists(std::string name) { return table.count(name) > 0; }
+    uint32_t get_addr(std::string name) { return table.count(name) ? table[name].address : 0; }
+    DataType get_dtype(std::string name) { return table.count(name) ? table[name].dtype : DT_INT; }
+    NameRecord& get_record(std::string name) {
+        static NameRecord dummy; dummy={"",DT_INT,0,0,false,""};
+        return table.count(name) ? table[name] : dummy;
+    }
+};
+
+// --- III. STRUCT REGISTRY ---
+struct Member { std::string name; int offset; DataType dtype; };
+struct StructDef { std::string name; std::map<std::string,Member> members; int total_size; };
+std::map<std::string,StructDef> struct_types;
+
+// --- IV. STRING POOL ---
+struct StringEntry { std::string text; uint32_t addr; };
+std::vector<StringEntry> string_pool;
+uint32_t string_pool_next = 0x30000;
+
+uint32_t intern_string(const std::string& s) {
+    for (auto& e : string_pool) if (e.text == s) return e.addr;
+    uint32_t addr = string_pool_next;
+    StringEntry e; e.text=s; e.addr=addr;
+    string_pool.push_back(e);
+    string_pool_next += (uint32_t)(((s.size() + 4) / 4) * 4);
+    return addr;
+}
+
+void emit_string_pool() {
+    if (string_pool.empty()) return;
+    std::cout << std::endl << "# --- STRING POOL ---" << std::endl;
+    for (auto& e : string_pool) {
+        std::cout << "# \"" << e.text << "\" @ 0x" << std::hex << e.addr << std::dec << std::endl;
+        uint32_t waddr = e.addr;
+        size_t i = 0;
+        while (i <= e.text.size()) {
+            uint32_t word = 0;
+            for (int b = 0; b < 4; b++) {
+                unsigned char c = (i+b < e.text.size()) ? (unsigned char)e.text[i+b] : 0;
+                word |= ((uint32_t)c) << (b*8);
+            }
+            std::cout << "# WORD[0x" << std::hex << waddr << "]=0x" << word << std::dec << std::endl;
+            i += 4; waddr += 4;
+        }
+    }
+    std::cout << "# --- END STRING POOL ---" << std::endl;
+}
+
+// --- V. COMPILER ---
+class VirtualCompiler {
+    NameTable nt;
+    std::stack<std::string> if_labels;
+    std::stack<std::pair<std::string,std::string>> while_labels;
+    int label_id = 0;
+
+    std::string fresh(std::string p) { return "_"+p+"_"+std::to_string(label_id++); }
+
+    void emit_putchar(int r) {
+        std::cout << "STM R" << r << " M$[0x0]" << std::endl;
+        std::cout << "LDI R" << r << " $0x10000000" << std::endl;
+        std::cout << "STM R" << r << " M$[0x2]" << std::endl;
+    }
+
+    void emit_puts(int r_addr) {
+        std::string loop = fresh("puts_loop"), done = fresh("puts_done");
+        std::cout << "# puts: addr in R" << r_addr << std::endl;
+        std::cout << loop << ":" << std::endl;
+        std::cout << "LDM R9 M$[R" << r_addr << "]" << std::endl;
+        std::cout << "STJ $" << done << std::endl;
+        std::cout << "JMP [EQ] R9 $0" << std::endl;
+        for (int b = 0; b < 4; b++) {
+            std::cout << "AND R10 R9 $0xFF" << std::endl;
+            std::cout << "STJ $" << done << std::endl;
+            std::cout << "JMP [EQ] R10 $0" << std::endl;
+            emit_putchar(10);
+            if (b < 3) std::cout << "SHR R9 R9 $8" << std::endl;
+        }
+        std::cout << "ADD R" << r_addr << " R" << r_addr << " $4" << std::endl;
+        std::cout << "STJ $" << loop << std::endl;
+        std::cout << "JMP [LTEQGT] $0 $0" << std::endl;
+        std::cout << done << ":" << std::endl;
+    }
+
+    void resolve(const Token& t, int reg) {
+        if (t.type == NUMBER) {
+            std::cout << "LDI R" << reg << " $" << t.value << std::endl;
+        } else if (t.type == CHAR_LITERAL) {
+            std::cout << "LDI R" << reg << " $" << (int)(unsigned char)t.value[0] << std::endl;
+        } else if (t.type == STRING_LITERAL) {
+            uint32_t addr = intern_string(t.value);
+            std::cout << "LDI R" << reg << " $0x" << std::hex << addr << std::dec << std::endl;
+        } else if (t.value == "true") {
+            std::cout << "LDI R" << reg << " $1" << std::endl;
+        } else if (t.value == "false") {
+            std::cout << "LDI R" << reg << " $0" << std::endl;
+        } else if (nt.exists(t.value)) {
+            NameRecord& rec = nt.get_record(t.value);
+            if (rec.is_in_reg) {
+                if (rec.reg_num != reg)
+                    std::cout << "MOV R" << reg << " R" << rec.reg_num << std::endl;
+            } else {
+                std::cout << "LDM R" << reg << " M$[" << rec.address << "]" << std::endl;
+            }
+        } else {
+            std::cout << "LDI R" << reg << " $" << t.value << std::endl;
+        }
+    }
+
+    std::string jmp_flag(const std::string& op) {
+        if (op=="<")  return "EQGT"; if (op==">")  return "LTEQ";
+        if (op=="==") return "LTGT"; if (op=="!=") return "EQ";
+        if (op==">=") return "LT";   if (op=="<=") return "GT";
+        return "LTEQGT";
+    }
+
+public:
+    void emit_header() {
+        std::cout << "# --- STBASM32 OUTPUT ---" << std::endl;
+        std::cout << "LDI R15 $0x3FFFF" << std::endl;
+        std::cout << "CAL $main" << std::endl;
+        std::cout << "STJ $_exit" << std::endl;
+        std::cout << "_exit: JMP [LTEQGT] $0 $0" << std::endl << std::endl;
+    }
+
+    void compile(std::vector<Token> tokens) {
+        emit_header();
+        auto peek = [&](size_t base, int off) -> Token {
+            size_t idx = base + (size_t)off;
+            return (idx < tokens.size()) ? tokens[idx] : Token{PUNCTUATION,""};
+        };
+
+        for (size_t i = 0; i < tokens.size(); i++) {
+            Token t0=peek(i,0),t1=peek(i,1),t2=peek(i,2),
+                  t3=peek(i,3),t4=peek(i,4),t5=peek(i,5);
+
+            // char* name = "string"
+            if (t0.is("char")&&t1.is("*")&&t2.type==IDENTIFIER&&t3.is("=")) {
+                nt.add_var(t2.value, DT_POINTER);
+                resolve(t4, 0);
+                std::cout << "STM R0 M$[" << nt.get_addr(t2.value) << "]" << std::endl;
+                i += 5; continue;
+            }
+
+            // Type declaration
+            if ((t0.is("int")||t0.is("float")||t0.is("bool")||t0.is("char"))&&t1.type==IDENTIFIER) {
+                DataType dt = DT_INT;
+                if (t0.is("float")) dt=DT_FLOAT;
+                if (t0.is("bool"))  dt=DT_BOOL;
+                if (t0.is("char"))  dt=DT_CHAR;
+                nt.add_var(t1.value, dt);
+                if (t2.is("=")) { resolve(t3,0); std::cout<<"STM R0 M$["<<nt.get_addr(t1.value)<<"]"<<std::endl; i+=4; }
+                else i += 2;
+                continue;
+            }
+
+            // puts(expr)
+            if (t0.is("puts")&&t1.is("(")) { resolve(t2,5); emit_puts(5); i+=4; continue; }
+
+            // putchar(expr)
+            if (t0.is("putchar")&&t1.is("(")) { resolve(t2,10); emit_putchar(10); i+=4; continue; }
+
+            // void func(args) {
+            if (t0.is("void")&&t1.type==IDENTIFIER) {
+                nt.add_func(t1.value);
+                std::cout << "_" << t1.value << ":" << std::endl;
+                int arg_reg = 1; size_t j = i + 3;
+                while (j < tokens.size() && !tokens[j].is(")")) {
+                    if (tokens[j].is("int")||tokens[j].is("float")||tokens[j].is("char")||tokens[j].is("bool")) {
+                        DataType adt=DT_INT;
+                        if (tokens[j].is("float")) adt=DT_FLOAT;
+                        if (tokens[j].is("char"))  adt=DT_CHAR;
+                        if (tokens[j].is("bool"))  adt=DT_BOOL;
+                        nt.add_var_to_reg(tokens[j+1].value, arg_reg++, adt);
+                        j += 2;
+                    }
+                    if (j < tokens.size() && tokens[j].is(",")) j++;
+                }
+                i = j + 1; continue;
+            }
+
+            // *ptr = val
+            if (t0.is("*")&&t1.type==IDENTIFIER&&t2.is("=")) {
+                std::cout << "LDM R1 M$[" << nt.get_addr(t1.value) << "]" << std::endl;
+                resolve(t3, 0);
+                std::cout << "STM R0 M$[R1]" << std::endl;
+                i += 4; continue;
+            }
+
+            // ptr = &var
+            if (t0.type==IDENTIFIER&&t1.is("=")&&t2.is("&")&&t3.type==IDENTIFIER) {
+                std::cout << "LDI R0 $" << nt.get_addr(t3.value) << std::endl;
+                std::cout << "STM R0 M$[" << nt.get_addr(t0.value) << "]" << std::endl;
+                i += 4; continue;
+            }
+
+            // obj.member = val
+            if (t0.type==IDENTIFIER&&t1.is(".")&&t2.type==IDENTIFIER&&t3.is("=")) {
+                NameRecord& inst = nt.get_record(t0.value);
+                int off = struct_types[inst.struct_tag].members[t2.value].offset;
+                resolve(t4, 0);
+                std::cout << "STM R0 M$[" << (inst.address + off) << "]" << std::endl;
+                i += 5; continue;
+            }
+
+            // return [val]
+            if (t0.is("return")) {
+                if (t1.type!=PUNCTUATION&&!t1.value.empty()) { resolve(t1,0); i+=1; }
+                std::cout << "RET" << std::endl; continue;
+            }
+
+            // if (lhs op rhs) {
+            if (t0.is("if")&&t1.is("(")) {
+                std::string lbl = fresh("if_end");
+                if_labels.push(lbl);
+                resolve(t2,0); resolve(t4,1);
+                std::cout << "STJ $" << lbl << std::endl;
+                std::cout << "JMP [" << jmp_flag(t3.value) << "] R0 R1" << std::endl;
+                i += 6; continue;
+            }
+
+            // while (lhs op rhs) {
+            if (t0.is("while")&&t1.is("(")) {
+                std::string start=fresh("whl_s"), end=fresh("whl_e");
+                while_labels.push({start,end});
+                std::cout << start << ":" << std::endl;
+                resolve(t2,0); resolve(t4,1);
+                std::cout << "STJ $" << end << std::endl;
+                std::cout << "JMP [" << jmp_flag(t3.value) << "] R0 R1" << std::endl;
+                i += 6; continue;
+            }
+
+            // arr[idx]
+            if (t0.type==IDENTIFIER&&t1.is("[")&&t3.is("]")&&!t2.value.empty()) {
+                resolve(t2,1);
+                std::cout << "ADD R1 R1 $" << nt.get_addr(t0.value) << std::endl;
+                std::cout << "LDM R0 M$[R1]" << std::endl;
+                i += 4; continue;
+            }
+
+            // dest = expr [op expr]
+            if (t0.type==IDENTIFIER&&t1.is("=")&&!t2.is("&")) {
+                std::string dest = t0.value;
+                DataType dt = nt.get_dtype(dest);
+                resolve(t2, 0);
+                if (t3.type == OPERATOR) {
+                    resolve(t4, 1);
+                    std::string op=t3.value, vm_op;
+                    if (dt==DT_FLOAT) {
+                        if (op=="+") vm_op="ADF"; else if (op=="-") vm_op="SUF";
+                        else if (op=="*") vm_op="MUF"; else if (op=="/") vm_op="DIF";
+                        else vm_op="ADD";
+                    } else {
+                        if (op=="+") vm_op="ADD"; else if (op=="-") vm_op="SUB";
+                        else if (op=="*") vm_op="ICM";
+                        else if (op=="/") {
+                            std::cout<<"CAL $_runtime_div"<<std::endl;
+                            std::cout<<"STM R0 M$["<<nt.get_addr(dest)<<"]"<<std::endl;
+                            i+=5; continue;
+                        }
+                        else if (op=="<<") vm_op="SHL"; else if (op==">>") vm_op="SHR";
+                        else if (op=="&") vm_op="AND"; else if (op=="|") vm_op="OR_";
+                        else if (op=="^") vm_op="XOR";
+                        else if (op=="~") {
+                            std::cout<<"NOT R2 R0"<<std::endl;
+                            std::cout<<"STM R2 M$["<<nt.get_addr(dest)<<"]"<<std::endl;
+                            i+=4; continue;
+                        } else vm_op="ADD";
+                    }
+                    std::cout << vm_op << " R2 R0 R1" << std::endl;
+                    std::cout << "STM R2 M$[" << nt.get_addr(dest) << "]" << std::endl;
+                    i += 5;
+                } else {
+                    std::cout << "STM R0 M$[" << nt.get_addr(dest) << "]" << std::endl;
+                    i += 3;
+                }
+                continue;
+            }
+
+            // func(args)
+            if (t0.type==IDENTIFIER&&t1.is("(")&&!t0.is("void")) {
+                int arg_reg=1; size_t j=i+2;
+                while (j<tokens.size()&&!tokens[j].is(")")&&arg_reg<=4) {
+                    if (!tokens[j].is(",")) resolve(tokens[j], arg_reg++);
+                    j++;
+                }
+                std::cout << "CAL $" << t0.value << std::endl;
+                i = j; continue;
+            }
+
+            // }
+            if (t0.is("}")) {
+                if (!while_labels.empty()) {
+                    auto lbls=while_labels.top(); while_labels.pop();
+                    std::cout<<"STJ $"<<lbls.first<<std::endl;
+                    std::cout<<"JMP [LTEQGT] $0 $0"<<std::endl;
+                    std::cout<<lbls.second<<":"<<std::endl;
+                } else if (!if_labels.empty()) {
+                    std::cout<<if_labels.top()<<":"<<std::endl;
+                    if_labels.pop();
+                } else {
+                    std::cout<<"RET"<<std::endl<<std::endl;
+                }
+                continue;
+            }
+        }
+        emit_string_pool();
+    }
+};
+
+// --- VI. LEXER ---
+std::vector<Token> lex(const std::string& input) {
+    std::vector<Token> tokens;
+    size_t i = 0;
+    while (i < input.size()) {
+        if (isspace(input[i])) { i++; continue; }
+
+        if (input[i]=='"') {
+            std::string val; size_t j=i+1;
+            while (j<input.size()&&input[j]!='"') {
+                if (input[j]=='\\'&&j+1<input.size()) {
+                    char e=input[j+1];
+                    if (e=='n') val+='\n'; else if (e=='t') val+='\t';
+                    else if (e=='\\') val+='\\'; else if (e=='"') val+='"';
+                    else if (e=='0') val+='\0'; else val+=e;
+                    j+=2;
+                } else val+=input[j++];
+            }
+            tokens.push_back({STRING_LITERAL,val}); i=j+1; continue;
+        }
+
+        if (input[i]=='\'') {
+            char c=0; size_t j=i+1;
+            if (input[j]=='\\') {
+                char e=input[j+1];
+                if (e=='n') c='\n'; else if (e=='t') c='\t';
+                else if (e=='0') c='\0'; else c=e;
+                j+=2;
+            } else c=input[j++];
+            tokens.push_back({CHAR_LITERAL,std::string(1,c)}); i=j+1; continue;
+        }
+
+        if (i+1<input.size()) {
+            std::string two=input.substr(i,2);
+            if (two=="&&"||two=="||"||two=="=="||two=="!="||
+                two==">="||two=="<="||two=="<<"||two==">>") {
+                tokens.push_back({OPERATOR,two}); i+=2; continue;
+            }
+        }
+
+        if (isalpha(input[i])||input[i]=='_') {
+            size_t j=i;
+            while (j<input.size()&&(isalnum(input[j])||input[j]=='_')) j++;
+            std::string word=input.substr(i,j-i);
+            static const std::vector<std::string> kws={
+                "int","float","bool","char","struct","true","false",
+                "void","return","if","else","while","puts","putchar"
+            };
+            bool is_kw=false;
+            for (auto& k:kws) if (k==word){is_kw=true;break;}
+            tokens.push_back({is_kw?KEYWORD:IDENTIFIER,word});
+            i=j; continue;
+        }
+
+        if (i+1<input.size()&&input[i]=='0'&&input[i+1]=='x') {
+            size_t j=i+2;
+            while (j<input.size()&&isxdigit(input[j])) j++;
+            tokens.push_back({NUMBER,input.substr(i,j-i)}); i=j; continue;
+        }
+
+        if (isdigit(input[i])) {
+            size_t j=i;
+            while (j<input.size()&&isdigit(input[j])) j++;
+            tokens.push_back({NUMBER,input.substr(i,j-i)}); i=j; continue;
+        }
+
+        char c=input[i];
+        if (c=='+'||c=='-'||c=='*'||c=='/'||c=='='||c=='<'||c=='>'||
+            c=='&'||c=='|'||c=='^'||c=='~'||c=='!')
+            tokens.push_back({OPERATOR,std::string(1,c)});
+        else if (c=='{'||c=='}'||c=='('||c==')'||c==';'||c==','||c=='.')
+            tokens.push_back({PUNCTUATION,std::string(1,c)});
+        i++;
+    }
+    return tokens;
+}
+
+// --- VII. MAIN ---
+int main() {
+    std::cerr << "STBASM32 C Compiler - enter code, end with END:" << std::endl;
+    std::string code, line;
+    while (std::getline(std::cin, line)) {
+        if (line=="END") break;
+        code += line + " ";
+    }
+    VirtualCompiler vc;
+    vc.compile(lex(code));
+    return 0;
+}
