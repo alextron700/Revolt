@@ -1,3 +1,6 @@
+<img width="401" height="427" alt="image" src="https://github.com/user-attachments/assets/f95dbb78-81f6-4ffe-b53d-43e6b30c96b9" />
+
+
 # Welcome To Revolt
 ## What is Revolt?
 Revolt is a 32-bit wide virtual CPU which can take assembly-style code as input. It's written in C++, and can be run out of your compiler of choice and a terminal. 
