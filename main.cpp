@@ -5,12 +5,14 @@
 #include<iomanip>
 std::vector<unsigned int> encodeInstruction(std::string inst)
 {
+	try {
 	unsigned int opcode = 0;
 	if (inst.find("ADD") != std::string::npos)
 	{
 		opcode = 1;
 
-	}else if (inst.find("SUB") != std::string::npos)
+	}
+	else if (inst.find("SUB") != std::string::npos)
 	{
 		opcode = 2;
 
@@ -161,6 +163,7 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 	}
 	//0123 4 567 89 AB CDE F | GHIJ KLMN OPQR STUV
 	//0000 0 000 00 00 000 0 | 0000 0000 0000 0000
+	std::cout << "Opcode: " << opcode << std::endl;
 	if (opcode == 0 || opcode == 14 || opcode == 15) {
 		return { static_cast<unsigned int>((opcode << 27) & 0xFFFFFFFF) };
 
@@ -173,15 +176,13 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		{
 			char C = inst[4];
 			destFeild += 16;
-			destFeild += abs(std::stoi(inst.substr(8,1), nullptr, 16));
+			destFeild += abs(std::stoi(inst.substr(8, 1), nullptr, 16));
 			directMemory = true;
 
 		}
 		else
 		{
-		    char k = inst[5];
-		    char j = inst[4];
-			destFeild = abs(std::stoi(inst.substr(5,1), nullptr, 16));
+			destFeild = abs(std::stoi(inst.substr(5, 1), nullptr, 16));
 
 		}
 
@@ -204,11 +205,13 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		}
 
 	}
+	std::cout << "Dest: " << destFeild << std::endl;
 	int A = -1;
 	int B = -1;
 	bool AConst = false;
 	bool BConst = false;
 	int tokenA = -1;
+	int tokenB = -1;
 	for (int i = 0; i < inst.size(); i++)
 	{
 
@@ -225,12 +228,14 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 				}
 				if (inst[i] == '$')
 				{
-
-					A = abs(std::stoi(inst.substr(i + 1, 8), nullptr, 16));
+					size_t remaining = inst.size() - (i + 1);
+					std::string imm = inst.substr(i + 1, std::min((size_t)8, remaining));
+					// pad to 8 chars if needed
+					while (imm.size() < 8) imm += '0';
+					A = abs(std::stoi(imm, nullptr, 16));
 					AConst = true;
 					tokenA = i;
 					continue;
-
 				}
 
 
@@ -249,11 +254,14 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 				}
 				if (inst[i] == '$')
 				{
-
-					B = abs(std::stoi(inst.substr(i + 1, 8), nullptr, 16));
+					size_t remaining = inst.size() - (i + 1);
+					std::string imm = inst.substr(i + 1, std::min((size_t)8, remaining));
+					// pad to 8 chars if needed
+					while (imm.size() < 8) imm += '0';
+					B = abs(std::stoi(imm, nullptr, 16));
 					BConst = true;
+					tokenB = i;
 					continue;
-
 				}
 
 			}
@@ -261,6 +269,8 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		}
 
 	}
+	std::cout << "A: " << A << (AConst ? " (const)" : " (reg)") << std::endl;
+	std::cout << "B: " << B << (BConst ? " (const)" : " (reg)") << std::endl;
 	unsigned int One = (opcode << 27) & 0xFFFFFFFF;
 	unsigned int Two = (destFeild << 22) & 0xFFFFFFFF;
 	unsigned int Three = static_cast<unsigned int>(A & 0xF);
@@ -290,6 +300,12 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 
 	}
 	return output;
+	 }
+	 catch (std::exception& e) {
+		 std::cout << "Inner encode error: " << e.what() << std::endl;
+		 return { 0 };
+	 }
+	
 }
 
 int main()
@@ -301,7 +317,12 @@ int main()
 	std::cout << "Most of these shouldn't need much explanation, but do please keep in mind that STBASM32 is 32-bit" << std::endl;
 	printf("use # at the start of a line for a comment. make sure you don't include valid instructions (valid instructions are allcaps)");
 	printf("invalid instructions will be read by the parser as a NOP. it won't do anything, but it'll take a slot of memory\n");
-	std::vector<unsigned int> memory = { 0x0,0x0,0x0,0xFFFF };
+	//this is a bit of a hack, but the first three memory slots are reserved for I/O. memory[0] is the data slot, memory[1] is the address slot, and memory[2] is the control slot.
+	//  to do input, write the value you want to input into memory[1], set the highest bit of memory[2], and then read the value from memory[0]. to do output, write the value 
+	// you want to output into memory[0], set the second highest bit of memory[2] for integer output, set the third highest bit for float output, or set the fourth highest bit 
+	// for string output. for string output, the VM will read bytes from memory[0] until it reaches a 0, and print them as ASCII characters.
+	//
+	std::vector<unsigned int> memory = { 0x0,0x0,0x0 };
 	bool thinking = true;
 	int length = 0;
 	std::string command;
@@ -324,7 +345,13 @@ int main()
 		}
 		if (command[0] != '#')
 		{
-			encoded = encodeInstruction(command);
+			try {
+				encoded = encodeInstruction(command);
+			}
+			catch (std::exception& e) {
+				std::cout << "Encode error: " << e.what() << std::endl;
+				continue;
+			}
 			for (int i = 0; i < encoded.size(); i++)
 			{
 				std::cout << std::hex << encoded[i] << " ";
@@ -364,12 +391,12 @@ int main()
 	{
 		int instrCode = memory[PC];
 		int A = (instrCode >> 17) & 0xF;
-		int B = (instrCode >> 1) & 0xF;
+		int B = (instrCode >> 12) & 0xF;
 		int AIndex = A;
 		int BIndex = B;
 		A = R[A];
 		B = R[B];
-		bool AConst = (instrCode & (1 << 1)) > 0;
+		bool AConst = (instrCode & (1 << 21)) > 0;
 		bool BConst = (instrCode & (1 << 16)) > 0;
 		int Dest = (instrCode >> 22) & 0xF;
 		bool isAddress = (instrCode & 0x04000000) > 0;
@@ -445,7 +472,7 @@ int main()
 				break;
 			}
 
-			result = A - B;
+			result = static_cast<unsigned int>(A - B);
 			break;
 		}
 		case 0x3:
@@ -469,7 +496,6 @@ int main()
 		case 0x9:
 			if (B >= memory.size())
 			{
-				//memory.push_back(A);
 				for (int i = memory.size(); i < B + 1; i++)
 				{
 					memory.push_back(0);
@@ -482,12 +508,6 @@ int main()
 				memory[B] = A;
 
 			}
-			//	if(memory.size() == 65536 && B > memory.size())
-			//	{
-			//		MI = B;
-			//		memory[MI] = A;
-			//
-			//	}
 			break;
 		case 0xA:
 			result = memory[B % memory.size()];
@@ -500,9 +520,9 @@ int main()
 			bool LTEnabled = Dest & 0x1;
 			bool EQEnabled = Dest & 0x2;
 			bool GTEnabled = Dest & 0x4;
-			if ((A < B && LTEnabled) || (A == B && EQEnabled) || (A > B && GTEnabled))
+			if ((static_cast<int>(A) < static_cast<int>(B) && LTEnabled) || (static_cast<int>(A) == static_cast<int>(B) && EQEnabled) || (static_cast<int>(A) > static_cast<int>(B) && GTEnabled))
 			{
-				PC = JR + 3;
+				PC = JR;
 				incrementPC = false;
 
 			}
@@ -522,7 +542,7 @@ int main()
 				return 0;
 			}
 			stack.push_back(returnAddress); // it might be wise to plump up the memory with enough 0s I'm technically cheating here, but this is the most practical way I know of to implement this
-			PC = A + 3;
+			PC = A + 2;
 			incrementPC = false;
 
 			break;
@@ -537,7 +557,6 @@ int main()
 			}
 			else {
 				std::cout << "Stack Underflow!";
-				return 0;
 			}
 			break;
 		case 0xF:
@@ -881,7 +900,7 @@ int main()
 		}
 		if ((memory[2] & 0x40000000) != 0)
 		{
-			std::cout <<static_cast<int>(memory[0]);
+			std::cout << static_cast<int>(memory[0]);
 			memory[2] &= ~0x40000000;
 		}
 		if ((memory[2] & 0x20000000) != 0)
@@ -905,19 +924,7 @@ int main()
 			std::cout << printout;
 			memory[2] &= ~0x10000000;
 		}
-		if(memory[3] != 0 && memory[2] & 0x08000000 == 0)
-		{
-			memory[3]--;
-			memory[2] &= ~0x04000000;
-		}else{
-			memory[3] = 65535;
-			memory[2] |= 0x04000000;
-		}
-		if(memory[2] & 0x04000000 != 0)
-		{
-			std::cout << "INTERRUPT HAPPENED!" << std::endl;
-		}
 	}
-
+	system("pause");
 	return 0;
 }
