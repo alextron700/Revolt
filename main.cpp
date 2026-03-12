@@ -387,6 +387,7 @@ int main()
 		float F;
 		unsigned int I;
 	};
+	try {
 	while (PC < memory.size())
 	{
 		int instrCode = memory[PC];
@@ -687,6 +688,7 @@ int main()
 		}
 		case 0x15:
 		{
+			/*
 			bool AValid = false;
 			bool BValid = false;
 			if ((typeFlags & (1 << AIndex)) != 0)
@@ -704,7 +706,7 @@ int main()
 				return -1;
 				break;
 			}
-
+			*/
 			flint input;
 			input.F = static_cast<float>(A);
 			result = input.I;
@@ -900,14 +902,14 @@ int main()
 		}
 		if ((memory[2] & 0x40000000) != 0)
 		{
-			std::cout << static_cast<int>(memory[0]);
+			std::cout << static_cast<int>(memory[0])<<" ";
 			memory[2] &= ~0x40000000;
 		}
 		if ((memory[2] & 0x20000000) != 0)
 		{
 			flint F;
 			F.I = memory[0];
-			std::cout << F.F;
+			std::cout << F.F <<" ";
 			memory[2] &= ~0x20000000;
 		}
 		if ((memory[2] & 0x10000000) != 0)
@@ -924,6 +926,12 @@ int main()
 			std::cout << printout;
 			memory[2] &= ~0x10000000;
 		}
+	}
+	}
+	catch (std::exception& e) {
+		std::cout << "VM crash: " << e.what() << std::endl;
+		system("pause");
+		return -1;
 	}
 	system("pause");
 	return 0;
