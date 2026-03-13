@@ -767,7 +767,7 @@ int main()
 		{
 			if (VA.size() == 0 && VB.size() == 0)
 			{
-				std::cout << "Vectors require at least element!";
+				std::cout << "Vectors require at least one element!";
 				return 0;
 			}
 			VA.pop_back();
