@@ -20,11 +20,13 @@ write your program instruction by instruction, then type "RUN" to execute
 Have fun! 
 # intructions must be written in all caps 
 ## Example program
-- LDI R0 $00000002 R0
-- ADD R1 R0 $00000002
-- STM R1 R1 $00000000
-- STM R0 $40000000 $00000002
-- RUN
+```
+LDI R0 $00000002 R0
+ADD R1 R0 $00000002
+STM R1 R1 $00000000
+STM R0 $40000000 $00000002
+RUN
+```
 $ immediate
 R register
 Write the upper four bits at Memory address $00000002 to interact with the console
