@@ -3,7 +3,7 @@
 #include <string>
 #include <iostream>
 #include<iomanip>
-std::vector<unsigned int> encodeInstruction(std::string inst)
+std::vector<unsigned int> encodeInstruction(std::string inst, bool debugMode = true)
 {
 	try {
 	unsigned int opcode = 0;
@@ -163,7 +163,10 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 	}
 	//0123 4 567 89 AB CDE F | GHIJ KLMN OPQR STUV
 	//0000 0 000 00 00 000 0 | 0000 0000 0000 0000
-	std::cout << "Opcode: " << opcode << std::endl;
+	if (debugMode)
+	{
+		std::cout << "Opcode: " << opcode << std::endl;
+	}
 	if (opcode == 0 || opcode == 14 || opcode == 15) {
 		return { static_cast<unsigned int>((opcode << 27) & 0xFFFFFFFF) };
 
@@ -205,7 +208,10 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		}
 
 	}
-	std::cout << "Dest: " << destFeild << std::endl;
+	if (debugMode)
+	{
+		std::cout << "Dest: " << destFeild << std::endl;
+	}
 	int A = -1;
 	int B = -1;
 	bool AConst = false;
@@ -269,8 +275,11 @@ std::vector<unsigned int> encodeInstruction(std::string inst)
 		}
 
 	}
-	std::cout << "A: " << A << (AConst ? " (const)" : " (reg)") << std::endl;
-	std::cout << "B: " << B << (BConst ? " (const)" : " (reg)") << std::endl;
+	if (debugMode)
+	{
+		std::cout << "A: " << A << (AConst ? " (const)" : " (reg)") << std::endl;
+		std::cout << "B: " << B << (BConst ? " (const)" : " (reg)") << std::endl;
+	}
 	unsigned int One = (opcode << 27) & 0xFFFFFFFF;
 	unsigned int Two = (destFeild << 22) & 0xFFFFFFFF;
 	unsigned int Three = static_cast<unsigned int>(A & 0xF);
@@ -317,6 +326,11 @@ int main()
 	std::cout << "Most of these shouldn't need much explanation, but do please keep in mind that STBASM32 is 32-bit" << std::endl;
 	printf("use # at the start of a line for a comment. make sure you don't include valid instructions (valid instructions are allcaps)");
 	printf("invalid instructions will be read by the parser as a NOP. it won't do anything, but it'll take a slot of memory\n");
+	std::cout << "The syntax for instructions is as follows: [OPCODE] [DEST], [A], [B]. For example, 'ADD R1, R2, R3' will add the values in R2 and R3 and store the result in R1." << std::endl;
+	std::cout << "For instructions that don't take two arguments, just use R0 for unused arguments." << std::endl;
+	std::cout << "For instructions that take an immediate value, use $ followed by the value" << std::endl;
+	std::cout << "For example, 'LDI R1, $5' will load the value 5 into R1." << std::endl;
+	std::cout << "DEBUG ON and DEBUG OFF will toggle debug info. it will print debug information, (operands and opcode). it is off by default." << std::endl;
 	//this is a bit of a hack, but the first three memory slots are reserved for I/O. memory[0] is the data slot, memory[1] is the address slot, and memory[2] is the control slot.
 	//  to do input, write the value you want to input into memory[1], set the highest bit of memory[2], and then read the value from memory[0]. to do output, write the value 
 	// you want to output into memory[0], set the second highest bit of memory[2] for integer output, set the third highest bit for float output, or set the fourth highest bit 
@@ -327,14 +341,39 @@ int main()
 	int length = 0;
 	std::string command;
 	std::vector<unsigned int> encoded;
+	bool debugMode = false;
+	bool batchMode = false;
+	// set to true to print out the opcode, dest, and A and B fields of each instruction as it's encoded. 
+	//this is useful for debugging the assembler, but it can be a bit verbose, so it's off by default.
 	while (thinking)
 	{
 		//if(length > 65536)
 		//	{
 		//		thinking = false;
 		//	}
-		std::cout << length << ": ";
+		if (command == "BATCH MODE")
+		{
+			batchMode = true;
+			debugMode = false;
+		}
+		if (!batchMode)
+		{
+			std::cout << length << ": ";
+		}
 		getline(std::cin, command);
+		if(command == "DEBUG ON" && !batchMode)
+		{
+			debugMode = true;
+			std::cout << "Debug mode enabled. Opcode, dest, and A and B fields will be printed for each instruction." << std::endl;
+			continue;
+
+		}
+		if (command == "DEBUG OFF" && !batchMode)
+		{
+			debugMode = false;
+			std::cout << "Debug mode disabled." << std::endl;
+			continue;
+		}
 		if (command == "RUN" && length > 0)
 		{
 			thinking = false;
@@ -346,17 +385,25 @@ int main()
 		if (command[0] != '#')
 		{
 			try {
-				encoded = encodeInstruction(command);
+				encoded = encodeInstruction(command,debugMode);
 			}
 			catch (std::exception& e) {
 				std::cout << "Encode error: " << e.what() << std::endl;
 				continue;
 			}
-			for (int i = 0; i < encoded.size(); i++)
+			if (!batchMode)
 			{
-				std::cout << std::hex << encoded[i] << " ";
+				for (int i = 0; i < encoded.size(); i++)
+				{
+					std::cout << std::hex << encoded[i] << " ";
+				}
 			}
-
+			else {
+				for (int i = 0; i < encoded.size(); i++)
+				{
+					std::cout << std::hex << encoded[i] << "\n";
+				}
+			}
 
 			for (int i = 0; i < encoded.size(); i++)
 			{
@@ -767,7 +814,7 @@ int main()
 		{
 			if (VA.size() == 0 && VB.size() == 0)
 			{
-				std::cout << "Vectors require at least one element!";
+				std::cout << "Vectors require at least element!";
 				return 0;
 			}
 			VA.pop_back();
