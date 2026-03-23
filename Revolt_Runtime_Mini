@@ -1,0 +1,630 @@
+#include <vector>
+#include <string>
+#include <cstring>
+#include <iostream>
+struct RS
+{
+    std::vector<unsigned int> RCurrent;
+    unsigned short types;
+};
+class revolt_runtime_mini
+{
+public:
+revolt_runtime_mini()
+{
+memory = {};
+Vout = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
+errorStatus = "None";
+R = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
+typeFlags = 0;
+PC = 0;
+MI = 0;
+JR = 0;
+stack = {};
+halted = false;
+}
+void loadProgram(std::vector<unsigned int>& program)
+{
+memory = program;
+}
+std::string getError()
+{
+return errorStatus;
+}
+void Rstep()
+{
+    if (halted || memory.empty() || PC >= memory.size()) return;
+try{
+int instrCode = memory[PC];
+int A = (instrCode >> 17) & 0xF;
+int B = (instrCode >> 12) & 0xF;
+int AIndex = A;
+int BIndex = B;
+A = R[A];
+B = R[B];
+bool AConst = (instrCode & (1 << 21)) > 0;
+bool BConst = (instrCode & (1 << 16)) > 0;
+int Dest = (instrCode >> 22) & 0xF;
+bool isAddress = (instrCode & 0x04000000) > 0;
+bool incrementPC = true;
+if (AConst && BConst)
+{
+A = memory[PC + 1];
+B = memory[PC + 2];
+PC += 2;
+
+}
+else if (AConst) {
+A = memory[PC + 1];
+PC++;
+
+}
+else if (BConst)
+{
+B = memory[PC + 1];
+PC++;
+
+}
+unsigned int opcode = (instrCode >> 27) & 0x1F;
+int result = 0;
+switch (opcode) {
+case 0x1:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) == 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) == 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "ADD does not take float inputs.- The Revolt VM ";
+// errorStatus =  PC;
+// return -1;
+break;
+}
+unsigned long long int X = A + B;
+if (X <= 0xFFFFFFFF)
+{
+result = static_cast<int>(X);
+}
+else {
+errorStatus =  "Integer Overflow!"; //<< std::endl;
+// return 0;
+}
+break;
+}
+case 0x2:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) == 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) == 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "SUB does not take float inputs. - The Revolt VM";
+//errorStatus =  PC;
+// return -1;
+break;
+}
+
+result = static_cast<unsigned int>(A - B);
+break;
+}
+case 0x3:
+result = A & B;
+break;
+case 0x4:
+result = A | B;
+break;
+case 0x5:
+result = (~A & B) | (A & ~B);
+break;
+case 0x6:
+result = (~A);
+break;
+case 0x7:
+result = A >> B;
+break;
+case 0x8:
+result = A << B;
+break;
+case 0x9:
+if (B >= memory.size())
+{
+for (int i = memory.size(); i < B + 1; i++)
+{
+memory.push_back(0);
+}
+memory[B] = A;
+
+}
+if (B < memory.size())
+{
+memory[B] = A;
+
+}
+break;
+case 0xA:
+result = memory[B % memory.size()];
+break;
+case 0xB:
+JR = A;
+break;
+case 0xC:
+{
+bool LTEnabled = Dest & 0x1;
+bool EQEnabled = Dest & 0x2;
+bool GTEnabled = Dest & 0x4;
+if ((static_cast<int>(A) < static_cast<int>(B) && LTEnabled) || (static_cast<int>(A) == static_cast<int>(B) && EQEnabled) || (static_cast<int>(A) > static_cast<int>(B) && GTEnabled))
+{
+PC = JR;
+incrementPC = false;
+
+}
+break;
+}
+case 0xD:
+{
+//SP++;
+unsigned int returnAddress = PC + 1;
+if (AConst)
+{
+returnAddress++;
+}
+if (stack.size() > 65536)
+{
+errorStatus =  "Stack Overflow!";
+return;
+}
+stack.push_back(returnAddress); // it might be wise to plump up the memory with enough 0s I'm technically cheating here, but this is the most practical way I know of to implement this
+PC = A + 2;
+incrementPC = false;
+
+break;
+}
+case 0xE:
+if (stack.size() > 0)
+{
+//SP--;
+PC = stack[stack.size() - 1];
+stack.pop_back();
+incrementPC = false;
+}
+else {
+errorStatus =  "Stack Underflow!";
+}
+break;
+case 0xF:
+PC = 0;
+//memset(R, 0, sizeof(R));
+JR = 0;
+// SP = 0;
+halted = true;
+return;
+
+break;
+case 0x10:
+result = A;
+break;
+case 0x11:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Floats require special handling. Please convert to float!";
+// errorStatus =  PC;
+return;
+break;
+}
+flint FIA;
+flint FIB;
+FIA.I = A;
+FIB.I = B;
+flint FIout;
+FIout.F = FIA.F + FIB.F;
+result = FIout.I;
+break;
+}
+case 0x12:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Floats require special handling. Please convert to float! ";
+// errorStatus =  PC;
+return;
+break;
+}
+flint FIA;
+flint FIB;
+FIA.I = A;
+FIB.I = B;
+flint FIout;
+FIout.F = FIA.F - FIB.F;
+result = FIout.I;
+break;
+}
+case 0x13:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Floats require special handling. Please convert to float!";
+// errorStatus =  PC;
+break;
+}
+flint FIA;
+flint FIB;
+FIA.I = A;
+FIB.I = B;
+flint FIout;
+FIout.F = FIA.F * FIB.F;
+result = FIout.I;
+break;
+}
+case 0x14:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Floats require special handling. Please convert to float!";
+// errorStatus =  PC;
+return;
+}
+if (B == 0.0f)
+{
+errorStatus =  "Dividing by zero is illegal!";
+return;
+}
+flint FIA;
+flint FIB;
+FIA.I = A;
+FIB.I = B;
+flint FIout;
+FIout.F = FIA.F / FIB.F;
+result = FIout.I;
+break;
+}
+case 0x15:
+{
+/*
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Floats require special handling. Please convert to float!";
+errorStatus =  PC;
+return -1;
+break;
+}
+*/
+flint input;
+input.F = static_cast<float>(A);
+result = input.I;
+typeFlags |= 1 << Dest;
+break;
+
+}
+case 0x16:
+{
+flint input;
+input.I = static_cast<int>(A);
+result = input.I;
+typeFlags &= ~(1 << Dest);
+break;
+}
+case 0x17:
+{
+bool AValid = false;
+bool BValid = false;
+if ((typeFlags & (1 << AIndex)) != 0)
+{
+AValid = true;
+}
+if ((typeFlags & (1 << BIndex)) != 0)
+{
+BValid = true;
+}
+if (!(AValid && BValid))
+{
+errorStatus =  "Please convert vector arguments to floats!";
+// errorStatus =  PC;
+return;
+break;
+}
+flint FIA;
+flint FIB;
+FIA.I = A;
+FIB.I = B;
+if (VA.size() < 16)
+{
+VA.push_back(FIA.F);
+}
+if (VA.size() == 16 || AIndex < VA.size()) {
+VA[AIndex] = FIA.F;
+
+}
+if (VB.size() < 16)
+{
+VB.push_back(FIB.F);
+}
+if (VB.size() == 16 || BIndex < VB.size())
+{
+VB[BIndex] = FIB.F;
+}
+break;
+}
+case 0x18:
+{
+if (VA.size() == 0 && VB.size() == 0)
+{
+errorStatus =  "Vectors require at least element!";
+return;
+}
+VA.pop_back();
+VB.pop_back();
+break;
+}
+case 0x19:
+{
+if (VA.size() == VB.size())
+{
+for (int i = 0; i < VA.size(); i++)
+{
+Vout[i] = VA[i] + VB[i];
+}
+}
+else {
+errorStatus =  "Vectors need to be the same size!";
+return;
+}
+break;
+}
+case 0x1A:
+{
+if (VA.size() == VB.size())
+{
+for (int i = 0; i < VA.size(); i++)
+{
+Vout[i] = VA[i] - VB[i];
+}
+}
+else {
+errorStatus =  "Vectors need to be the same size!";
+return;
+}
+break;
+}
+case 0x1B:
+{
+if (VA.size() == VB.size())
+{
+for (int i = 0; i < VA.size(); i++)
+{
+Vout[i] = VA[i] * VB[i];
+}
+}
+else {
+errorStatus =  "Vectors need to be the same size!";
+return;
+}
+break;
+}
+case 0x1C:
+{
+if (VA.size() == VB.size())
+{
+for (int i = 0; i < VA.size(); i++)
+{
+if (VB[i] == 0.0f)
+{
+errorStatus =  "Dividing by zero is illegal!";
+return;
+}
+Vout[i] = VA[i] / VB[i];
+}
+}
+else {
+errorStatus =  "Vectors need to be the same size!";
+return;
+}
+break;
+}
+case 0x1D:
+{
+flint vout;
+vout.F = Vout[AIndex];
+result = vout.I;
+break;
+}
+case 0x1E:
+{
+long long X = A * B;
+if (X <= 0xFFFFFFFF)
+{
+result = X;
+}
+else {
+errorStatus =  "Integer Overflow!";
+return;
+}
+break;
+}
+case 0x1F:
+{
+long long int bigboy = A * B;
+flint overflow;
+if (bigboy > 0xFFFFFFFF)
+{
+overflow.F = static_cast<float>(bigboy);
+result = overflow.I;
+typeFlags |= 1 << Dest;
+}
+else {
+result = static_cast<int>(bigboy);
+}
+}
+break;
+}
+
+
+
+if (!isAddress)
+{
+R[Dest] = result;
+
+}
+else
+{
+memory[R[Dest] % memory.size()] = result;
+
+}
+if (incrementPC)
+{
+PC++;
+
+}
+if ((memory[2] & 0x80000000) != 0)
+{
+    // Input stub - Raylib will handle this
+    memory[2] &= ~0x80000000;
+}
+if ((memory[2] & 0x40000000) != 0)
+{
+    // Int print stub - Raylib will handle this
+    memory[2] &= ~0x40000000;
+}
+if ((memory[2] & 0x20000000) != 0)
+{
+    // Float print stub - Raylib will handle this
+    memory[2] &= ~0x20000000;
+}
+if ((memory[2] & 0x10000000) != 0)
+{
+    // Char print stub - Raylib will handle this
+    memory[2] &= ~0x10000000;
+}
+}
+catch (std::exception& e) {
+errorStatus =  std::string("VM crash: ") + e.what(); //<< std::endl;
+//system("pause");
+return;
+}
+}
+union flint {
+float F;
+unsigned int I;
+};
+RS getRegs()
+{
+    RS regs;
+    regs.RCurrent = R;
+    regs.types = typeFlags;
+    return regs;
+}
+void writeToMemory(unsigned int address, unsigned int value)
+{
+if(address < memory.size() && address > -1)
+{
+memory[address] = value;
+}
+}
+unsigned int readMemory(unsigned int address)
+{
+if(address < memory.size() && address >= 0)
+{
+ return memory[address];
+}
+return 0;
+}
+void setPC(unsigned int NPC)
+{
+PC = NPC;
+}
+unsigned int getPC()
+{
+return PC;
+}
+
+
+private:
+std::vector<unsigned int> memory = {0,0,0,0xffff};
+unsigned int PC;
+unsigned int MI;
+unsigned int JR;
+std::vector<unsigned int> stack;
+std::vector<unsigned int> R;
+unsigned short typeFlags;
+std::vector<float> VA;
+std::vector<float> VB;
+std::vector<float> Vout;
+std::string errorStatus;
+bool halted;
+};
+
+//system("pause");
+int main()
+{
+    revolt_runtime_mini RRM = revolt_runtime_mini();
+    std::vector<unsigned int> test = {0x80220000, 0x00000003};
+    RRM.loadProgram(test);
+    RRM.Rstep();
+    RS R = RRM.getRegs();
+    std::cout<<R.RCurrent[0];
+    return EXIT_SUCCESS;
+}
