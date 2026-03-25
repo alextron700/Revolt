@@ -980,6 +980,9 @@ int main()
 		system("pause");
 		return -1;
 	}
-	system("pause");
+	if (!batchMode)
+	{
+		system("pause");
+	}
 	return 0;
 }
