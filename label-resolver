@@ -1,0 +1,175 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <map>
+#include <sstream>
+#include <algorithm>
+ 
+// Revolt Label Resolver
+// Sits between the C compiler and the Revolt assembler.
+// Pass 1: Find all labels, calculate their word addresses.
+// Pass 2: Replace all $LabelName references with numeric addresses.
+// Output: Pure numeric assembly ready for Revolt.
+ 
+// Strip leading/trailing whitespace
+std::string trim(const std::string& s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) return "";
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return s.substr(start, end - start + 1);
+}
+ 
+// Check if a line is a comment or empty
+bool is_ignorable(const std::string& line) {
+    std::string t = trim(line);
+    return t.empty() || t[0] == '#' || t[0] == ';';
+}
+ 
+// Count how many words (instruction slots) a line consumes
+// Rules:
+//   - Comments/empty/labels: 0 words
+//   - Instructions with 0 immediates: 1 word
+//   - Instructions with 1 immediate ($number): 2 words
+//   - Instructions with 2 immediates: 3 words
+// An immediate is a $NUMBER token (not a $LabelName — those become numbers after resolution)
+// For pass 1, we treat $anything as an immediate (1 slot) conservatively.
+int count_words(const std::string& line) {
+    std::string t = trim(line);
+    if (t.empty() || t[0]=='#' || t[0]==';') return 0;
+ 
+    // Label definition: ends with ':'  (may have instruction after, e.g. "_exit: JMP ...")
+    // Strip label prefix if present
+    std::string content = t;
+    size_t colon = t.find(':');
+    if (colon != std::string::npos) {
+        content = trim(t.substr(colon + 1));
+        if (content.empty()) return 0; // pure label line, no instruction
+    }
+ 
+    if (content.empty() || content[0]=='#' || content[0]==';') return 0;
+ 
+    // Count $ tokens = immediates
+    int imm_count = 0;
+    std::istringstream ss(content);
+    std::string tok;
+    bool first = true;
+    while (ss >> tok) {
+        if (first) { first = false; continue; } // skip opcode
+        if (tok[0] == '$') imm_count++;
+    }
+    // Cap at 2 immediates (max per STBASM32 instruction)
+    if (imm_count > 2) imm_count = 2;
+    return 1 + imm_count;
+}
+ 
+// Replace all occurrences of $LabelName in a line with their numeric address
+std::string resolve_labels(const std::string& line, const std::map<std::string,int>& labels) {
+    std::string result;
+    size_t i = 0;
+    while (i < line.size()) {
+        if (line[i] == '$') {
+            // Read the label/number name
+            size_t j = i + 1;
+            while (j < line.size() && (isalnum(line[j]) || line[j]=='_')) j++;
+            std::string ref = line.substr(i+1, j-i-1);
+            // Is it a label reference?
+            if (labels.count(ref)) {
+                result += "$" + std::to_string(labels.at(ref));
+            } else {
+                // It's a numeric literal or unknown — pass through unchanged
+                result += line.substr(i, j-i);
+            }
+            i = j;
+        } else {
+            result += line[i++];
+        }
+    }
+    return result;
+}
+ 
+int main() {
+    std::cerr << "Revolt Label Resolver" << std::endl;
+    std::cerr << "Pipe compiler output through this before feeding to Revolt." << std::endl;
+    std::cerr << "Usage: compiler | labelresolve | revolt" << std::endl << std::endl;
+ 
+    // Read all input lines
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        lines.push_back(line);
+    }
+ 
+    // --- PASS 1: Build label table ---
+    std::map<std::string, int> labels;
+    int word_addr = 0;
+ 
+    for (auto& l : lines) {
+        std::string t = trim(l);
+        if (t.empty() || t[0]=='#' || t[0]==';') continue;
+ 
+        // Check for label definition
+        size_t colon = t.find(':');
+        if (colon != std::string::npos) {
+            std::string label_name = trim(t.substr(0, colon));
+            // Validate: label names are alphanumeric + underscore
+            bool valid = !label_name.empty();
+            for (char c : label_name) {
+                if (!isalnum(c) && c != '_') { valid = false; break; }
+            }
+            if (valid) {
+                labels[label_name] = word_addr;
+                // Check if there's an instruction after the label on the same line
+                std::string after = trim(t.substr(colon + 1));
+                if (!after.empty() && after[0]!='#' && after[0]!=';') {
+                    // Count words for the instruction part
+                    word_addr += count_words(after);
+                }
+                continue;
+            }
+        }
+ 
+        word_addr += count_words(l);
+    }
+ 
+    std::cerr << "# Labels resolved:" << std::endl;
+    for (auto& kv : labels) {
+        std::cerr << "#   " << kv.first << " -> " << kv.second << std::endl;
+    }
+    std::cerr << std::endl;
+ 
+    // --- PASS 2: Emit resolved assembly ---
+    for (auto& l : lines) {
+        std::string t = trim(l);
+ 
+        // Pass comments and empty lines through as-is
+        if (t.empty() || t[0]=='#' || t[0]==';') {
+            std::cout << l << std::endl;
+            continue;
+        }
+ 
+        // Handle label definitions
+        size_t colon = t.find(':');
+        if (colon != std::string::npos) {
+            std::string label_name = trim(t.substr(0, colon));
+            bool valid = !label_name.empty();
+            for (char c : label_name) {
+                if (!isalnum(c) && c != '_') { valid = false; break; }
+            }
+            if (valid) {
+                // Emit a comment showing where the label resolved to
+                std::cout << "# " << label_name << ": @ " << labels[label_name] << std::endl;
+                // If instruction follows label on same line, emit it resolved
+                std::string after = trim(t.substr(colon + 1));
+                if (!after.empty() && after[0]!='#' && after[0]!=';') {
+                    std::cout << resolve_labels(after, labels) << std::endl;
+                }
+                continue;
+            }
+        }
+ 
+        // Regular instruction line — resolve any label references
+        std::cout << resolve_labels(l, labels) << std::endl;
+    }
+ 
+    return 0;
+}
