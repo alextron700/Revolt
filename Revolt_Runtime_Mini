@@ -32,7 +32,7 @@ memory = program;
 #include <string>
 #include <iostream>
 #include<iomanip>
-std::vector<unsigned int> encodeInstruction(std::string inst, bool debugMode = true)
+std::vector<unsigned int> encodeInstruction(std::string inst, bool debugMode = false)
 {
 	try {
 	unsigned int opcode = 0;
